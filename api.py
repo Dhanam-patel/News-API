@@ -1,5 +1,4 @@
-# cybersecurity-scraper-api/cyber_news_api.py
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -8,56 +7,50 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 import os
 from dotenv import load_dotenv
+import json
 
-# Load the secret sauce (env vars, baby!)
 load_dotenv()
 TARGET_WEBSITES = os.getenv("TARGET_WEBSITES", "https://thehackernews.com/,https://cybernews.com/cybercrime/").split(",")
 
-# Unleash the CyberNews-o-Tron 3000!
 app = FastAPI(
     title="CyberNews-o-Tron 3000",
     description="Scraping cyber news faster than a hacker downs Red Bull!",
     version="1.0.0"
 )
 
-# The mighty scraping engine—fear its power!
 def scrape_the_interwebs():
     news_list = []
-    
-    # Set up Chrome options to mimic a real browser
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    # Initialize WebDriver
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-    })
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
     
     try:
-        for url in TARGET_WEBSITES:
+        driver = webdriver.Chrome(options=chrome_options)
+        print("WebDriver initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize WebDriver: {e}")
+        return [{"error": f"WebDriver setup failed: {str(e)}"}]
+    
+    try:
+        for url in TARGET_WEBSITES[:1]:  # Limit to 1 site
             print(f"Raiding {url} like a digital pirate—argh!")
             driver.get(url)
-            
             try:
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
+                WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             except TimeoutException:
                 print(f"Timeout waiting for {url} to load!")
                 continue
             
-            # Collect all article links first
             article_links = []
-            
             if "thehackernews.com" in url:
                 articles = driver.find_elements(By.CLASS_NAME, "body-post")
                 print(f"Found {len(articles)} articles on {url}")
-                for article in articles:
+                for article in articles[:5]:  # Limit to 5 articles
                     try:
                         title_elem = article.find_element(By.CLASS_NAME, "home-title")
                         link_elem = article.find_element(By.CLASS_NAME, "story-link")
@@ -73,7 +66,7 @@ def scrape_the_interwebs():
             elif "cybernews.com/cybercrime/" in url:
                 focus_articles = driver.find_elements(By.CLASS_NAME, "focus-articles__article")
                 print(f"Found {len(focus_articles)} focus articles on {url}")
-                for article in focus_articles:
+                for article in focus_articles[:5]:  # Limit to 5 articles
                     try:
                         title_elem = article.find_element(By.CLASS_NAME, "focus-articles__title")
                         link_elem = article.find_element(By.CLASS_NAME, "focus-articles__link")
@@ -88,7 +81,7 @@ def scrape_the_interwebs():
                 
                 regular_articles = driver.find_elements(By.CSS_SELECTOR, ".cells__item h3")
                 print(f"Found {len(regular_articles)} regular articles on {url}")
-                for article in regular_articles:
+                for article in regular_articles[:5]:  # Limit to 5 articles
                     try:
                         link_elem = article.find_element(By.XPATH, "./parent::a")
                         title = article.text.strip() if article.text else "Unnamed Cyber Tale!"
@@ -100,17 +93,10 @@ def scrape_the_interwebs():
                         print(f"Skipping stale regular article on {url}")
                         continue
             
-            # Limit to 10 articles total across all sites
-            limited_article_links = article_links[:10 - len(news_list)] if len(news_list) < 10 else []
-            
-            # Visit each article link to scrape content
-            for title, link in limited_article_links:
+            for title, link in article_links[:5]:  # Double limit for safety
                 try:
                     driver.get(link)
-                    WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.TAG_NAME, "body"))
-                    )
-                    
+                    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
                     if "thehackernews.com" in url:
                         content_elem = driver.find_element(By.CLASS_NAME, "articlebody")
                         article_text = content_elem.text.strip() if content_elem else "No article found!"
@@ -124,9 +110,7 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": article_text
                     })
-                    
-                    # Stop if we’ve reached 10 articles
-                    if len(news_list) >= 10:
+                    if len(news_list) >= 5:  # Limit to 5 total
                         break
                 except TimeoutException:
                     print(f"Timeout loading article page: {link}")
@@ -136,7 +120,7 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": "Failed to load article due to timeout"
                     })
-                    if len(news_list) >= 10:
+                    if len(news_list) >= 5:
                         break
                 except Exception as e:
                     print(f"Error scraping article {title}: {e}")
@@ -146,11 +130,10 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": f"Error fetching article: {str(e)}"
                     })
-                    if len(news_list) >= 10:
+                    if len(news_list) >= 5:
                         break
             
-            # Break outer loop if we already have 10 articles
-            if len(news_list) >= 10:
+            if len(news_list) >= 5:
                 break
     
     except Exception as e:
@@ -162,18 +145,24 @@ def scrape_the_interwebs():
     
     return news_list if news_list else [{"error": "No news fetched!"}]
 
-# Root endpoint—because every API needs a welcome mat
-@app.get("/", response_description="Welcome to the cyber party!")
+@app.get("/health")
+async def health_check():
+    return {"status": "API is up and running!"}
+
+@app.get("/")
 async def root():
     return {
         "greeting": "Hey there, cyber warrior! Welcome to CyberNews-o-Tron 3000!",
-        "instructions": "Hit up /news/all to fetch the latest 10 cyber news articles!"
+        "instructions": "Hit up /news/all to fetch the latest 5 cyber news articles in JSON!"
     }
 
-# Fetch all news—served hot and spicy! (limited to 10)
-@app.get("/news/all", response_description="Top 10 freshest cyber gossip!")
+@app.get("/news/all")
 async def get_all_news():
     news = scrape_the_interwebs()
     if not news or "error" in news[0]:
         return {"message": "No news? Guess the hackers are napping—lucky you!"}
-    return news
+    return Response(content=json.dumps(news), media_type="application/json")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
