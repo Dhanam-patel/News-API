@@ -100,8 +100,11 @@ def scrape_the_interwebs():
                         print(f"Skipping stale regular article on {url}")
                         continue
             
+            # Limit to 10 articles total across all sites
+            limited_article_links = article_links[:10 - len(news_list)] if len(news_list) < 10 else []
+            
             # Visit each article link to scrape content
-            for title, link in article_links:
+            for title, link in limited_article_links:
                 try:
                     driver.get(link)
                     WebDriverWait(driver, 15).until(
@@ -121,6 +124,10 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": article_text
                     })
+                    
+                    # Stop if we’ve reached 10 articles
+                    if len(news_list) >= 10:
+                        break
                 except TimeoutException:
                     print(f"Timeout loading article page: {link}")
                     news_list.append({
@@ -129,6 +136,8 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": "Failed to load article due to timeout"
                     })
+                    if len(news_list) >= 10:
+                        break
                 except Exception as e:
                     print(f"Error scraping article {title}: {e}")
                     news_list.append({
@@ -137,10 +146,16 @@ def scrape_the_interwebs():
                         "source": url,
                         "article": f"Error fetching article: {str(e)}"
                     })
+                    if len(news_list) >= 10:
+                        break
+            
+            # Break outer loop if we already have 10 articles
+            if len(news_list) >= 10:
+                break
     
     except Exception as e:
         print(f"Whoops! Something went haywire: {e}")
-        return [{"error": f"Scraping failed: {str(e)}"}]
+        return [{"error": f"Scraping failed: {str(e)}"}] if not news_list else news_list
     
     finally:
         driver.quit()
@@ -152,15 +167,13 @@ def scrape_the_interwebs():
 async def root():
     return {
         "greeting": "Hey there, cyber warrior! Welcome to CyberNews-o-Tron 3000!",
-        "instructions": "Hit up /news/all to fetch all the latest cyber news!"
+        "instructions": "Hit up /news/all to fetch the latest 10 cyber news articles!"
     }
 
-# Fetch all news—served hot and spicy!
-@app.get("/news/all", response_description="All the freshest cyber gossip!")
+# Fetch all news—served hot and spicy! (limited to 10)
+@app.get("/news/all", response_description="Top 10 freshest cyber gossip!")
 async def get_all_news():
     news = scrape_the_interwebs()
     if not news or "error" in news[0]:
         return {"message": "No news? Guess the hackers are napping—lucky you!"}
     return news
-
-# Note: Removed the /news/category/{category} endpoint as it wasn't part of your latest requirement
