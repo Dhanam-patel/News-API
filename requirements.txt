@@ -4,3 +4,4 @@ gunicorn  # Must be here!
 requests
 beautifulsoup4
 python-dotenv
+selenium
