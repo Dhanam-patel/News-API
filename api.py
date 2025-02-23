@@ -1,9 +1,9 @@
-# cybersecurity-scraper-api/cyber_news_api.py
 from fastapi import FastAPI
 import requests
 from bs4 import BeautifulSoup
 import os
 from dotenv import load_dotenv
+from urllib.parse import urljoin
 
 # Load the secret sauce (env vars, baby!)
 load_dotenv()
@@ -22,22 +22,22 @@ def scrape_the_interwebs():
     headers = {
         "User-Agent": "CyberNews-o-Tron 3000 (Not a bot, I swear—beep boop!)"
     }
+    
     for url in TARGET_WEBSITES:
         try:
             print(f"Raiding {url} like a digital pirate—argh!")
             response = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.content, "html.parser")
             
-            # Site-specific scraping logic
             if "thehackernews.com" in url:
                 articles = soup.find_all("div", class_="body-post")
+                print(f"Found {len(articles)} articles on {url}")
                 for article in articles:
                     title_elem = article.find("h2", class_="home-title")
                     link_elem = article.find("a", class_="story-link")
                     title = title_elem.text.strip() if title_elem else "Mystery Scoop!"
-                    link = link_elem["href"] if link_elem else "#"
-                    if not link.startswith("http"):
-                        link = "https://thehackernews.com" + link
+                    link = link_elem["href"] if link_elem and link_elem.has_attr("href") else "#"
+                    link = urljoin(url, link)
                     news_list.append({
                         "title": title,
                         "link": link,
@@ -45,24 +45,35 @@ def scrape_the_interwebs():
                         "tagline": "Freshly hacked from the cyber vines!"
                     })
             elif "bleepingcomputer.com" in url:
-                articles = soup.find_all("div", class_="bc_latest_news_box")
-                for article in articles:
-                    title_elem = article.find("h4")
-                    link_elem = article.find("a")
-                    title = title_elem.text.strip() if title_elem else "Unnamed Chaos!"
-                    link = link_elem["href"] if link_elem else "#"
-                    if not link.startswith("http"):
-                        link = "https://www.bleepingcomputer.com" + link
-                    news_list.append({
-                        "title": title,
-                        "link": link,
-                        "source": url,
-                        "tagline": "Beep beep—news delivered!"
-                    })
-            if not articles:
-                print(f"{url} is stingy—no news today!")
+                news_wrap = soup.find("ul", id="bc-home-news-main-wrap")
+                if news_wrap:
+                    articles = news_wrap.find_all("li")
+                    print(f"Found {len(articles)} articles on {url}")
+                    for article in articles:
+                        text_div = article.find("div", class_="bc_latest_news_text")
+                        if text_div:
+                            title_elem = text_div.find("h4")
+                            if title_elem:
+                                if "Sponsored Content" in title_elem.text:
+                                    print("Skipping sponsored content")
+                                    continue
+                                a_tag = title_elem.find("a")
+                                if a_tag and a_tag.has_attr("href"):
+                                    title = a_tag.text.strip()
+                                    link = urljoin(url, a_tag["href"])
+                                    news_list.append({
+                                        "title": title,
+                                        "link": link,
+                                        "source": url,
+                                        "tagline": "Beep beep—news delivered!"
+                                    })
+                else:
+                    print(f"No news wrap found on {url}")
+            else:
+                print(f"Unknown website: {url}")
         except Exception as e:
             print(f"Whoops! {url} threw a tantrum: {e}")
+    
     return news_list
 
 # Root endpoint—because every API needs a welcome mat
